@@ -10,14 +10,13 @@ LUA_INTERP="$(luarocks config lua_interpreter)"
 
 run()
 {
-  # rm javaimp.db
+  rm javaimp.db
 
   echo
   # TODO: use busted for this
 
-
   # Update index
-  # $LUA_INTERP ../javaimp.lua -i javaimp.db update m2
+  $LUA_INTERP ../javaimp.lua -i javaimp.db update m2
 
   # Cat everything in the index
   $LUA_INTERP ../javaimp.lua -i javaimp.db cat

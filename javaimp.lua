@@ -30,13 +30,16 @@ local function update (index, repo)
     check(db:exec([[
       pragma journal_mode=WAL;
       create table if not exists symbols (
-        symbol text primary key
+        pkg text,
+        sym text,
+        primary key (pkg, sym)
       );
     ]]))
     local addsym = check(db:runner([[
-      insert into symbols (symbol) values ($1)
+      insert into symbols (pkg, sym) values ($1, $2)
     ]]))
     local nb = 0
+    check(db:begin())
     fs.files(repo, { recurse = true })
       :map(check)
       -- TODO: Curry
@@ -55,18 +58,21 @@ local function update (index, repo)
         return str.endswith(fp, ".class")
       end)
       :map(function (fp)
-        return (fp
-          :gsub("%.class$", "")
-          :gsub("/", "."))
+        fp = fp:gsub("%.class$", "")
+        fp = str.split(fp, "/")
+        local pkg = table.concat(fp, ".", 1, fp.n - 1)
+        local sym = fp[fp.n]
+        return pkg, sym
       end)
-      :each(function (sym)
+      :each(function (pkg, sym)
         if nb > 0 and nb % 1000 == 0 then
           print("Scanned " .. nb)
         end
-        addsym(sym)
+        addsym(pkg, sym)
         nb = nb + 1
       end)
     print("Scanned " .. nb)
+    check(db:commit())
   end, err.error)
 end
 
@@ -77,7 +83,7 @@ local function cat (index)
     syms = check(syms())
     while not syms:done() do
       local sym = check(syms())
-      print(sym.symbol)
+      print(sym.pkg, sym.sym)
     end
   end, err.error)
 end
