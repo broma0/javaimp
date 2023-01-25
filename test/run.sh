@@ -7,19 +7,20 @@
 cd "$(dirname "$0")"
 
 LUA_INTERP="$(luarocks config lua_interpreter)"
+LUA_PATH="./src/?.lua;$LUA_PATH"
 
 run()
 {
-  rm javaimp.db
+  # rm javaimp.db
 
   echo
   # TODO: use busted for this
 
   # Update index
-  $LUA_INTERP ../javaimp.lua -i javaimp.db update m2
+  $LUA_INTERP ../src/javaimp/cli.lua -i javaimp.db update m2
 
   # Cat everything in the index
-  $LUA_INTERP ../javaimp.lua -i javaimp.db cat
+  $LUA_INTERP ../src/javaimp/cli.lua -i javaimp.db find "rest"
 
   # TODO: Add import
   # $LUA_INTERP ../javaimp.lua -i javaimp.db -a RestController
@@ -33,7 +34,7 @@ then
 
   while true; do
     run
-    inotifywait -qq ../javaimp.lua \
+    inotifywait -qqr ../src \
       -e modify \
       -e close_write
   done

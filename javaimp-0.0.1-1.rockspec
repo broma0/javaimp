@@ -21,8 +21,13 @@ dependencies = {
 }
 
 build = {
-  type = "command",
-  install_command = "sh install.sh"
+  type = "builtin",
+  modules = {
+    ["javaimp.cli"] = "src/javaimp/cli.lua",
+    ["javaimp.nvim"] = "src/javaimp/nvim.lua",
+    ["javaimp.find"] = "src/javaimp/find.lua",
+    ["javaimp.update"] = "src/javaimp/update.lua"
+  }
 }
 
 test = {
