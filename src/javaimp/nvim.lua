@@ -1,3 +1,6 @@
+-- TODO: Extend to consider methods, class
+-- properties, etc.
+
 local sys = require("santoku.system")
 local err = require("santoku.err")
 local str = require("santoku.string")

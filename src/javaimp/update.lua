@@ -1,3 +1,6 @@
+-- TODO: Extend to look inside classes for
+-- methods, etc.
+
 local fs = require("santoku.fs")
 local err = require("santoku.err")
 local sys = require("santoku.system")
