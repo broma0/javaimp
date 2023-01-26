@@ -19,7 +19,11 @@ function cmp:complete (params, callback)
   err.pwrap(function (check)
     callback(check(M.get_matches(sym))
       :map(function (match)
-        return { label = match.sym, pkg = match.pkg }
+        return {
+          label = match.sym,
+          detail = match.pkg .. "." .. match.sym,
+          data = match
+        }
       end)
       :unwrap())
   end, err.error)
@@ -27,7 +31,7 @@ end
 
 function cmp:execute (item, callback)
   callback(item)
-  M.import(item.pkg, item.label)
+  M.import(item.data.pkg, item.data.sym)
 end
 
 M.import = function (pkg, sym)
