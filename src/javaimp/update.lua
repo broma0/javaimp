@@ -49,6 +49,10 @@ return function (index, repo)
       insert into pkg (id_jar, pkg) values ($1, $2)
       returning *
     ]]))
+    local get_sym = check(db:getter([[
+      select * from sym
+      where id_jar = $1 and id_pkg = $2 and sym = $3
+    ]]))
     local add_sym = check(db:getter([[
       insert into sym (id_jar, id_pkg, sym) values ($1, $2, $3)
       returning *
@@ -84,11 +88,15 @@ return function (index, repo)
         if not pkg then
           pkg = check(add_pkg(jar.id, spkg))
         end
-        sym = check(add_sym(jar.id, pkg.id, ssym))
-        if nb > 0 and nb % 1000 == 0 then
-          print("Scanned " .. nb)
+        if not check(get_sym(jar.id, pkg.id, ssym)) then
+          sym = check(add_sym(jar.id, pkg.id, ssym))
+          if nb > 0 and nb % 10000 == 0 then
+            print("Scanned " .. nb)
+            check(db:commit())
+            check(db:begin())
+          end
+          nb = nb + 1
         end
-        nb = nb + 1
       end)
     print("Scanned " .. nb)
     check(db:commit())
