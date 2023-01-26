@@ -1,5 +1,8 @@
+-- TODO: Figure out how to run install.sh even
+-- with the builtin type
+
 package = "javaimp"
-version = "0.0.1-1"
+version = "0.0.1-2"
 rockspec_format = "3.0"
 
 -- TODO: Should this source be local?
@@ -14,7 +17,7 @@ description = {
 
 -- TODO: Add luacheck
 dependencies = {
-  "lua == 5.1",
+  "lua >= 5.1",
   "santoku >= 0.0.9-1",
   "argparse >= 0.7.1",
   "lsqlite3 >= 0.9.5"
