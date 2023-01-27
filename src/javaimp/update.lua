@@ -15,18 +15,22 @@ return function (index, repo)
     local db = check(sql.open(index))
 
     check(db:exec([[
+
       pragma journal_mode=WAL;
+
       create table if not exists jar (
         id integer primary key,
         jar text unique not null,
         time integer not null
       );
+
       create table if not exists pkg (
         id integer primary key,
         id_jar integer not null references jar (id) on delete cascade,
         pkg text not null,
         unique (id_jar, pkg)
       );
+
       create table if not exists sym (
         id integer primary key,
         id_jar integer not null references jar (id) on delete cascade,
@@ -34,6 +38,7 @@ return function (index, repo)
         sym text not null,
         unique (id_jar, id_pkg, sym)
       );
+
     ]]))
 
     local get_jar = check(db:getter([[
