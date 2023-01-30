@@ -1,46 +1,65 @@
 #!/bin/sh
 
-# TODO: Figure out a real command line interface
-# testing framework (expect maybe?) and
-# implement tests
+# TODO: getopts to parse iterate options:
+#   - test/cov everything
+#   - test/cov single with summary of missed
+#     lines
+#   - custom reporter that understands functions
 
-cd "$(dirname "$0")"
+# TODO: write this in lua
 
-LUA_INTERP="$(luarocks config lua_interpreter)"
-LUA_PATH="./src/?.lua;$LUA_PATH"
+cd "$(dirname "$0")/.."
+
+LUA=$(luarocks config lua_interpreter)
+
+perf ()
+{ :
+  # TODO
+  # LUA_INTERP="luajit-2.1.0-beta3 -jp=mls10" sh install.sh
+  # rm -rf .javaimp.*; luarocks build; javaimp -i .javaimp.db update test
+}
 
 run()
 {
-  # rm javaimp.db
-
+  rm -f \
+    test/luacov.stats.out \
+    test/luacov.report.out
+  if [ "$1" = "--build" ]
+  then
+    luarocks build
+    shift
+  fi
+  if [ "$#" = "0" ]
+  then
+    covmatch=""
+    test_files="test/spec"
+    source_files="src"
+  else
+    covmatch="NR < 4 $(echo "$@" | sed 's/\(\S*\)/|| match(\$0, \"\1\")/')"
+    test_files="$(echo "$@" | sed 's/src/test\/spec/')"
+    source_files="$@"
+  fi
   echo
-  # TODO: use busted for this
-
-  # Update index
-  $LUA_INTERP ../src/javaimp/cli.lua -i javaimp.db update m2
-
-  # Cat everything in the index
-  $LUA_INTERP ../src/javaimp/cli.lua -i javaimp.db find "rest"
-
-  # TODO: Add import
-  # $LUA_INTERP ../javaimp.lua -i javaimp.db -a RestController
-
-  # TODO:
-  #  | fzf <select completion or import>
+  if busted --lua="$LUA" -f test/busted.lua "$test_files"
+  then
+    luacov -c test/luacov.lua
+    luacheck --config test/luacheck.lua "$source_files"
+    cat test/luacov.report.out | \
+      awk '/^Summary/ { P = NR } P && NR > P + 1' | \
+      awk "$covmatch { print }"
+  fi
 }
 
-if [ "$1" = "iterate" ]
-then
-
+iterate()
+{
   while true; do
-    run
-    inotifywait -qqr ../src \
+    run "$@"
+    inotifywait -qqr src test/spec test/*.lua test/run.sh \
       -e modify \
       -e close_write
   done
+}
 
-else
+[ -z "$1" ] && set run
 
-  run
-
-fi
+"$@"

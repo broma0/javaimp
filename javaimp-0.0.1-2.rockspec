@@ -23,6 +23,13 @@ dependencies = {
   "lsqlite3 >= 0.9.5"
 }
 
+test_dependencies = {
+  "busted >= 2.1.1",
+  "luacov >= 0.15.0",
+  "luacheck >= 1.1.0-1",
+  "lsqlite3 >= 0.9.5",
+}
+
 build = {
   type = "builtin",
   modules = {
