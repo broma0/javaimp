@@ -7,11 +7,10 @@ M.mem = function (index, vals)
   return err.pwrap(function (check)
     local db = check(sql.open(index))
     local iter = check(db:iter([[
-      select jar.jar, pkg.pkg, sym.sym, mem.mem
-      from jar, pkg, sym, mem
+      select distinct pkg.pkg, sym.sym, mem.mem
+      from pkg, sym, mem
       where mem.id_sym = sym.id
         and sym.id_pkg = pkg.id
-        and pkg.id_jar = jar.id
     ]] .. (vals.pkg and [[
         and pkg.pkg = :pkg
     ]] or "") .. (vals.sym and [[
@@ -29,10 +28,9 @@ M.sym = function (index, vals)
   return err.pwrap(function (check)
     local db = check(sql.open(index))
     local iter = check(db:iter([[
-      select jar.jar, pkg.pkg, sym.sym
-      from jar, pkg, sym
+      select distinct pkg.pkg, sym.sym
+      from pkg, sym
       where sym.id_pkg = pkg.id
-        and pkg.id_jar = jar.id
     ]] .. (vals.pkg and [[
         and pkg.pkg = :pkg
     ]] or "") .. [[

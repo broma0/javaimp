@@ -144,7 +144,7 @@ M.get_matches = function (token, type, pkg, sym)
   return err.pwrap(function (check)
     return check(sys.sh(cmd))
       :vec():map(function (line)
-        return str.split(line, "\t"):tabulate("jar", "pkg", "sym", "mem")
+        return str.split(line, "\t"):tabulate("pkg", "sym", "mem")
       end)
   end)
 end

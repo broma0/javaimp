@@ -50,8 +50,7 @@ elseif args.find then
       :map(check)
       :each(function (match)
         print(compat.unpack({
-          match.jar, match.pkg,
-          match.sym, match.mem
+          match.pkg, match.sym, match.mem
         }))
       end)
     end))
