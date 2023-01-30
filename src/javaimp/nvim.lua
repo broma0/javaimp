@@ -1,6 +1,3 @@
--- TODO: Extend to consider methods, class
--- properties, etc.
-
 local sys = require("santoku.system")
 local err = require("santoku.err")
 local str = require("santoku.string")
@@ -15,23 +12,49 @@ function cmp.new ()
 end
 
 function cmp:complete (params, callback)
-  local sym = params.context.cursor_before_line:gsub("%W", "")
-  err.pwrap(function (check)
-    callback(check(M.get_matches(sym))
-      :map(function (match)
-        return {
-          label = match.sym,
-          detail = match.pkg .. "." .. match.sym,
-          data = match
-        }
-      end)
-      :unwrap())
-  end, err.error)
+  local line = params.context.cursor_line
+  local tok = line:sub(params.context.cursor.col - params.keyword_length, params.context.cursor.col - 1)
+  local prev = line:sub(params.context.cursor.col - params.keyword_length - 1, params.context.cursor.col - params.keyword_length - 1)
+  assert(err.pwrap(function (check)
+    if prev == "." then
+      local pos = vim.fn.getpos(".")
+      vim.fn.search("\\.", "bc")
+      local ivar = vim.fn.search("\\w\\+", "bc")
+      local var = ivar ~= 0 and vim.fn.expand("<cword>")
+      local isym = var and vim.fn.search("\\w\\+\\s\\+" .. var, "bc")
+      local sym = isym and isym ~= 0 and vim.fn.expand("<cword>")
+      local iline = sym and vim.fn.search("^import.*" .. sym .. ";", "bc")
+      local pkg = iline and iline ~= 0 and vim.fn.getline(vim.fn.line("."))
+        :match("^import%s*(.*)%.[^.]*%s*;%s*$")
+      vim.fn.setpos(".", pos)
+      callback(check(M.get_matches(tok, "mem", pkg, sym))
+        :map(function (match)
+          return {
+            label = match.mem,
+            detail = table.concat({ match.pkg, match.sym, match.mem }, "."),
+            data = match
+          }
+        end)
+        :unwrap())
+    else
+      callback(check(M.get_matches(tok, "sym"))
+        :map(function (match)
+          return {
+            label = match.sym,
+            detail = table.concat({ match.pkg, match.sym }, "."),
+            data = match
+          }
+        end)
+        :unwrap())
+    end
+  end))
 end
 
 function cmp:execute (item, callback)
   callback(item)
-  M.import(item.data.pkg, item.data.sym)
+  if not item.mem then
+    M.import(item.data.pkg, item.data.sym)
+  end
 end
 
 M.import = function (pkg, sym)
@@ -86,7 +109,7 @@ M.import_token = function ()
   local sym = vim.fn.expand("<cword>")
   if sym and sym ~= "" then
     err.pwrap(function (check)
-      local ms = check(M.get_matches(sym))
+      local ms = check(M.get_matches(sym, "sym"))
       if ms.n == 1 then
         M.import(ms[1].pkg, ms[1].sym)
       elseif ms.n > 1 then
@@ -113,12 +136,15 @@ end
 -- instead of via the cli. Require of sqlite/lfs
 -- fails due to sybmols unable to be located
 -- lua_pushsting, etc
-M.get_matches = function (sym)
-  local cmd = "javaimp -i ~/.javaimp.db find \"" .. sym .. "\""
+M.get_matches = function (token, type, pkg, sym)
+  local cmd = "javaimp -i ~/.javaimp.db find -t " .. type .. " "
+  cmd = pkg and (cmd .. "-p " .. pkg .. " ") or cmd
+  cmd = sym and (cmd .. "-s " .. sym .. " ") or cmd
+  cmd = cmd .. "\"" .. token .. "\""
   return err.pwrap(function (check)
-    return check(sys.popen(cmd))
+    return check(sys.sh(cmd))
       :vec():map(function (line)
-        return str.split(line, "\t"):tabulate("pkg", "sym")
+        return str.split(line, "\t"):tabulate("jar", "pkg", "sym", "mem")
       end)
   end)
 end

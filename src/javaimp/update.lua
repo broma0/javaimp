@@ -1,44 +1,65 @@
 -- TODO: Extend to look inside classes for
 -- methods, etc.
 
+-- TODO: Parallelize
+
+-- TODO: Use javap -classpath <jar> -public -constants <class>
+
+local lfs = require("lfs")
 local fs = require("santoku.fs")
 local err = require("santoku.err")
 local sys = require("santoku.system")
 local gen = require("santoku.gen")
 local str = require("santoku.string")
 local sql = require("santoku.sqlite")
+local vec = require("santoku.vector")
 
 return function (index, repo)
 
-  err.pwrap(function (check)
+  local tmp
+  return err.pwrap(function (check)
 
     local db = check(sql.open(index))
 
+    -- TODO: Convert to check.ok(fs.cwd())
+    local dir = check.exists(lfs.currentdir())
+
+    -- TODO: This doesn't work on luajit with
+    -- profiling enabled for some reason
+    -- tmp = check(sys.tmpfile()) .. ".dir"
+
+    tmp = ".javaimp.tmp"
+
     check(db:exec([[
-
       pragma journal_mode=WAL;
-
+      pragma synchronous=normal;
       create table if not exists jar (
         id integer primary key,
         jar text unique not null,
         time integer not null
       );
-
       create table if not exists pkg (
         id integer primary key,
         id_jar integer not null references jar (id) on delete cascade,
         pkg text not null,
         unique (id_jar, pkg)
       );
-
       create table if not exists sym (
         id integer primary key,
-        id_jar integer not null references jar (id) on delete cascade,
         id_pkg integer not null references pkg (id) on delete cascade,
         sym text not null,
-        unique (id_jar, id_pkg, sym)
+        unique (id_pkg, sym)
       );
-
+      create table if not exists mem (
+        id integer primary key,
+        id_sym integer not null references sym (id) on delete cascade,
+        mem text not null,
+        unique (id_sym, mem)
+      );
+      create index if not exists jar_jar on jar (jar);
+      create index if not exists pkg_pkg on pkg (pkg);
+      create index if not exists sym_sym on sym (sym);
+      create index if not exists mem_mem on mem (mem);
     ]]))
 
     local get_jar = check(db:getter([[
@@ -49,85 +70,161 @@ return function (index, repo)
       delete from jar where id = $1
     ]]))
 
-    local add_jar = check(db:getter([[
+    local add_jar = check(db:inserter([[
       insert into jar (jar, time) values ($1, $2)
-      returning *
     ]]))
 
     local get_pkg = check(db:getter([[
-      select * from pkg where pkg = $1
-    ]]))
+      select id from pkg where pkg = $1
+    ]], "id"))
 
-    local add_pkg = check(db:getter([[
+    local add_pkg = check(db:inserter([[
       insert into pkg (id_jar, pkg) values ($1, $2)
-      returning *
     ]]))
 
     local get_sym = check(db:getter([[
-      select * from sym
-      where id_jar = $1 and id_pkg = $2 and sym = $3
+      select id from sym where sym = $1
+    ]], "id"))
+
+    local add_sym = check(db:inserter([[
+      insert into sym (id_pkg, sym) values ($1, $2)
     ]]))
 
-    local add_sym = check(db:getter([[
-      insert into sym (id_jar, id_pkg, sym) values ($1, $2, $3)
-      returning *
+    local get_mem = check(db:getter([[
+      select id from mem where mem = $1
+    ]], "id"))
+
+    local add_mem = check(db:inserter([[
+      insert into mem (id_sym, mem) values ($1, $2)
     ]]))
 
-    local nb = 0
-    check(db:begin())
+    local total = 0
 
-    -- TODO: make sure this is listing absolute
-    -- paths
     fs.files(repo, { recurse = true })
 
       :map(check)
-
       :filter(function (fp)
         return str.endswith(fp, ".jar")
       end)
 
-      :map(function (fp, attr)
+      :each(function (fp, attr)
+
+        local jtotal = 0
+        check(db:begin())
+
+        -- TODO: Fix paths, should always use absolute
+        -- fp = fs.join(dir, fp)
         local jar = check(get_jar(fp))
+
         if jar and jar.time == attr.modification then
-          return gen.empty()
+          check(db:commit())
+          return
         elseif jar then
           check(delete_jar(jar.id))
         end
+
         jar = check(add_jar(fp, attr.modification))
-        return check(sys.popen("unzip -Z1", fp)):pastel(jar)
-      end)
 
-      :flatten()
+        -- TODO: Shell quoting
+        print("Processing(" .. fp .. ")")
+        check(sys.sh("unzip", fp, "-d", tmp))
+          :discard()
 
-      :filter(function (_, sym)
-        return str.endswith(sym, ".class")
-      end)
+        fs.files(tmp, { recurse = true })
+          :map(check)
 
-      :map(function (jar, sym)
-        sym = sym:gsub("%.class$", "")
-        sym = str.split(sym, "/")
-        return jar, table.concat(sym, ".", 1, sym.n - 1), sym[sym.n]
-      end)
+          :map(function (file)
+            if str.endswith(file, ".class") then
+              return file
+            else
+              check(sys.rm(file))
+              return
+            end
+          end)
 
-      :each(function (jar, spkg, ssym)
-        local pkg = check(get_pkg(spkg))
-        if not pkg then
-          pkg = check(add_pkg(jar.id, spkg))
-        end
-        if not check(get_sym(jar.id, pkg.id, ssym)) then
-          sym = check(add_sym(jar.id, pkg.id, ssym))
-          if nb > 0 and nb % 10000 == 0 then
-            print("Scanned " .. nb)
-            check(db:commit())
-            check(db:begin())
-          end
-          nb = nb + 1
-        end
-      end)
+          :filter()
+          :chunk(1000)
 
-    print("Scanned " .. nb)
-    check(db:commit())
+          :each(function (classes)
 
-  end, err.error)
+            local spkg
+            local ssym
+            local smems = vec()
+
+            -- TODO: Shell quoting
+            check(sys.sh("javap -public -constants", classes:concat(" ")))
+
+              :each(function(line)
+
+                -- TODO: Use LPEG for this
+                if not spkg then
+
+                  spkg = line:match("^public.*class%s*([%w_%.%$]*).*{.*$")
+                      or line:match("^public.*interface%s*([%w_%.%$]*).*{.*$")
+
+                  if spkg then
+                    ssym = str.split(spkg, "%.")
+                    spkg = ssym:concat(".", 1, ssym.n - 1)
+                    ssym = ssym[ssym.n]
+                  end
+
+                else
+
+                  local endpkg = line:match("^%s*}%s*$")
+
+                  if not endpkg then
+
+                    local smem = line:match("([%w_%$]*)%(")
+                              or line:match("([%w_%$]*) =")
+                              or line:match("([%w_%$]*);$")
+
+                    if smem then
+                      smems:append(smem)
+                    end
+
+                  else
+
+                    local pkg = check(get_pkg(spkg))
+                    if not pkg then
+                      pkg = check(add_pkg(jar, spkg))
+                    end
+
+                    local sym = check(get_sym(ssym))
+                    if not sym then
+                      sym = check(add_sym(pkg, ssym))
+                    end
+
+                    smems:each(function (smem)
+
+                      local mem = check(get_mem(smem))
+                      if not mem then
+                        check(add_mem(sym, smem))
+                      end
+
+                      jtotal = jtotal + 1
+                      total = total + 1
+
+                    end)
+
+                    spkg = nil
+                    ssym = nil
+                    smems = vec()
+
+                  end
+                end
+
+              end)
+
+            classes:map(sys.rm):each(check)
+
+          end)
+
+          check(fs.rmdirs(tmp))
+          check(db:commit())
+          print("Scanned(total: " .. total .. ")")
+
+        end)
+
+  end)
 
 end
