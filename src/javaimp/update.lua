@@ -1,9 +1,4 @@
--- TODO: Extend to look inside classes for
--- methods, etc.
-
 -- TODO: Parallelize
-
--- TODO: Use javap -classpath <jar> -public -constants <class>
 
 local lfs = require("lfs")
 local fs = require("santoku.fs")
@@ -57,9 +52,9 @@ return function (index, repo)
         unique (id_sym, mem)
       );
       create index if not exists jar_jar on jar (jar);
-      create index if not exists pkg_pkg on pkg (pkg);
-      create index if not exists sym_sym on sym (sym);
-      create index if not exists mem_mem on mem (mem);
+      create index if not exists pkg_id_jar_pkg on pkg (id_jar, pkg);
+      create index if not exists sym_id_pkg_sym on sym (id_pkg, sym);
+      create index if not exists mem_id_sym_mem on mem (id_sym, mem);
     ]]))
 
     local get_jar = check(db:getter([[
@@ -75,7 +70,7 @@ return function (index, repo)
     ]]))
 
     local get_pkg = check(db:getter([[
-      select id from pkg where pkg = $1
+      select id from pkg where id_jar = $1 and pkg = $2
     ]], "id"))
 
     local add_pkg = check(db:inserter([[
@@ -83,7 +78,7 @@ return function (index, repo)
     ]]))
 
     local get_sym = check(db:getter([[
-      select id from sym where sym = $1
+      select id from sym where id_pkg = $1 and sym = $2
     ]], "id"))
 
     local add_sym = check(db:inserter([[
@@ -91,7 +86,7 @@ return function (index, repo)
     ]]))
 
     local get_mem = check(db:getter([[
-      select id from mem where mem = $1
+      select id from mem where id_sym = $1 and mem = $2
     ]], "id"))
 
     local add_mem = check(db:inserter([[
@@ -109,7 +104,6 @@ return function (index, repo)
 
       :each(function (fp, attr)
 
-        local jtotal = 0
         check(db:begin())
 
         -- TODO: Fix paths, should always use absolute
@@ -154,7 +148,7 @@ return function (index, repo)
             -- TODO: Shell quoting
             check(sys.sh("javap -public -constants", classes:concat(" ")))
 
-              :each(function(line)
+              :each(function (line)
 
                 -- TODO: Use LPEG for this
                 if not spkg then
@@ -184,24 +178,24 @@ return function (index, repo)
 
                   else
 
-                    local pkg = check(get_pkg(spkg))
+                    local pkg = check(get_pkg(jar, spkg))
                     if not pkg then
                       pkg = check(add_pkg(jar, spkg))
                     end
 
-                    local sym = check(get_sym(ssym))
+                    local sym = check(get_sym(pkg, ssym))
                     if not sym then
                       sym = check(add_sym(pkg, ssym))
                     end
 
                     smems:each(function (smem)
 
-                      local mem = check(get_mem(smem))
+                      local mem = check(get_mem(sym, smem))
+
                       if not mem then
                         check(add_mem(sym, smem))
                       end
 
-                      jtotal = jtotal + 1
                       total = total + 1
 
                     end)
