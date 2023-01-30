@@ -1,3 +1,5 @@
+local ncmp = require("cmp")
+
 local sys = require("santoku.system")
 local err = require("santoku.err")
 local str = require("santoku.string")
@@ -21,8 +23,9 @@ function cmp:complete (params, callback)
       vim.fn.search("\\.", "bc")
       local ivar = vim.fn.search("\\w\\+", "bc")
       local var = ivar ~= 0 and vim.fn.expand("<cword>")
-      local isym = var and vim.fn.search("\\w\\+\\s\\+" .. var, "bc")
+      local isym = var and vim.fn.search("\\w\\+\\(<[^>]*>\\)*\\s\\+" .. var, "bc")
       local sym = isym and isym ~= 0 and vim.fn.expand("<cword>")
+      sym = sym or var
       local iline = sym and vim.fn.search("^import.*" .. sym .. ";", "bc")
       local pkg = iline and iline ~= 0 and vim.fn.getline(vim.fn.line("."))
         :match("^import%s*(.*)%.[^.]*%s*;%s*$")
@@ -30,6 +33,7 @@ function cmp:complete (params, callback)
       callback(check(M.get_matches(tok, "mem", pkg, sym))
         :map(function (match)
           return {
+            kind = ncmp.lsp.CompletionItemKind.Field,
             label = match.mem,
             detail = table.concat({ match.pkg, match.sym, match.mem }, "."),
             data = match
@@ -40,6 +44,7 @@ function cmp:complete (params, callback)
       callback(check(M.get_matches(tok, "sym"))
         :map(function (match)
           return {
+            kind = ncmp.lsp.CompletionItemKind.Class,
             label = match.sym,
             detail = table.concat({ match.pkg, match.sym }, "."),
             data = match
@@ -137,7 +142,7 @@ end
 -- fails due to sybmols unable to be located
 -- lua_pushsting, etc
 M.get_matches = function (token, type, pkg, sym)
-  local cmd = "javaimp -i ~/.javaimp.db find -t " .. type .. " "
+  local cmd = "javaimp -i ~/.javaimp.db find -l 100 -t " .. type .. " "
   cmd = pkg and (cmd .. "-p " .. pkg .. " ") or cmd
   cmd = sym and (cmd .. "-s " .. sym .. " ") or cmd
   cmd = cmd .. "\"" .. token .. "\""

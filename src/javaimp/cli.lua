@@ -27,6 +27,10 @@ cfind
   :count(1)
 
 cfind
+  :option("-l --limit", "limit of records to return")
+  :count("0-1")
+
+cfind
   :option("-p --pkg", "package to restrict to")
   :count("0-1")
 

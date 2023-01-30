@@ -19,7 +19,9 @@ M.mem = function (index, vals)
         and mem.mem like :prefix || '%'
         and length(mem.mem) > 3
       order by length(mem.mem) asc
-    ]]))
+    ]] .. (vals.limit and [[
+      limit :limit
+    ]] or "")))
     return check(iter(vals))
   end)
 end
@@ -37,7 +39,9 @@ M.sym = function (index, vals)
         and sym.sym like :prefix || '%'
         and length(sym.sym) > 3
       order by length(sym.sym) asc
-    ]]))
+    ]] .. (vals.limit and [[
+      limit :limit
+    ]] or "")))
     return check(iter(vals))
   end)
 end
