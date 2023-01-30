@@ -1,0 +1,5 @@
+- Track jar versions
+- Track class extends, implements, etc.
+- Scan target directory of current project
+  temporarily
+- Sort and auto-organize
