@@ -9,52 +9,58 @@ local str = require("santoku.string")
 local sql = require("santoku.sqlite")
 local vec = require("santoku.vector")
 
-return function (index, repo)
+return function (args)
+
+  assert(args.index, "Missing index param")
+  assert(args.repo, "Missing repo param")
 
   local tmp
+
   return err.pwrap(function (check)
 
-    local db = check(sql.open(index))
+    local db = check(sql.open(args.index))
 
-    -- TODO: Convert to check.ok(fs.cwd())
-    local dir = check.exists(lfs.currentdir())
-
-    -- TODO: This doesn't work on luajit with
-    -- profiling enabled for some reason
-    -- tmp = check(sys.tmpfile()) .. ".dir"
-
-    tmp = ".javaimp.tmp"
+    -- TODO: Ensure this is cleaned up on exit,
+    -- even when exception thrown, etc
+    tmp = args.tmpdir or check(sys.tmpfile()) .. ".dir"
 
     check(db:exec([[
+
       pragma journal_mode=WAL;
       pragma synchronous=normal;
+
       create table if not exists jar (
         id integer primary key,
         jar text unique not null,
         time integer not null
       );
+
       create table if not exists pkg (
         id integer primary key,
         id_jar integer not null references jar (id) on delete cascade,
         pkg text not null,
         unique (id_jar, pkg)
       );
+
       create table if not exists sym (
         id integer primary key,
         id_pkg integer not null references pkg (id) on delete cascade,
         sym text not null,
         unique (id_pkg, sym)
       );
+
       create table if not exists mem (
         id integer primary key,
         id_sym integer not null references sym (id) on delete cascade,
         mem text not null,
         unique (id_sym, mem)
       );
+
       create index if not exists jar_jar on jar (jar);
       create index if not exists pkg_id_jar_pkg on pkg (id_jar, pkg);
       create index if not exists sym_id_pkg_sym on sym (id_pkg, sym);
       create index if not exists mem_id_sym_mem on mem (id_sym, mem);
+
     ]]))
 
     local get_jar = check(db:getter([[
@@ -95,34 +101,36 @@ return function (index, repo)
 
     local total = 0
 
-    fs.files(repo, { recurse = true })
+    fs.files(args.repo, { recurse = true })
 
       :map(check)
       :filter(function (fp)
         return str.endswith(fp, ".jar")
       end)
 
-      :each(function (fp, attr)
+      :each(function (fp)
 
         check(db:begin())
 
-        -- TODO: Fix paths, should always use absolute
-        -- fp = fs.join(dir, fp)
+        fp = check(fs.absolute(fp))
         local jar = check(get_jar(fp))
+        local mod = check.exists(lfs.attributes(fp, "modification"))
 
-        if jar and jar.time == attr.modification then
+        if jar and jar.time == mod then
           check(db:commit())
           return
         elseif jar then
           check(delete_jar(jar.id))
         end
 
-        jar = check(add_jar(fp, attr.modification))
+        jar = check(add_jar(fp, mod))
 
         -- TODO: Shell quoting
         print("Processing(" .. fp .. ")")
         check(sys.sh("unzip", fp, "-d", tmp))
           :discard()
+
+        local smems = vec()
 
         fs.files(tmp, { recurse = true })
           :map(check)
@@ -143,11 +151,11 @@ return function (index, repo)
 
             local spkg
             local ssym
-            local smems = vec()
+            local pkg
+            local sym
 
             -- TODO: Shell quoting
             check(sys.sh("javap -public -constants", classes:concat(" ")))
-
               :each(function (line)
 
                 -- TODO: Use LPEG for this
@@ -157,9 +165,21 @@ return function (index, repo)
                       or line:match("^public.*interface%s*([%w_%.%$]*).*{.*$")
 
                   if spkg then
+
                     ssym = str.split(spkg, "%.")
                     spkg = ssym:concat(".", 1, ssym.n - 1)
                     ssym = ssym[ssym.n]
+
+                    pkg = check(get_pkg(jar, spkg))
+                    if not pkg then
+                      pkg = check(add_pkg(jar, spkg))
+                    end
+
+                    sym = check(get_sym(pkg, ssym))
+                    if not sym then
+                      sym = check(add_sym(pkg, ssym))
+                    end
+
                   end
 
                 else
@@ -173,36 +193,19 @@ return function (index, repo)
                               or line:match("([%w_%$]*);$")
 
                     if smem then
-                      smems:append(smem)
+                      local mem = check(get_mem(sym, smem))
+                      if not mem then
+                        check(add_mem(sym, smem))
+                        total = total + 1
+                      end
                     end
 
                   else
 
-                    local pkg = check(get_pkg(jar, spkg))
-                    if not pkg then
-                      pkg = check(add_pkg(jar, spkg))
-                    end
-
-                    local sym = check(get_sym(pkg, ssym))
-                    if not sym then
-                      sym = check(add_sym(pkg, ssym))
-                    end
-
-                    smems:each(function (smem)
-
-                      local mem = check(get_mem(sym, smem))
-
-                      if not mem then
-                        check(add_mem(sym, smem))
-                      end
-
-                      total = total + 1
-
-                    end)
-
                     spkg = nil
                     ssym = nil
-                    smems = vec()
+                    pkg = nil
+                    sym = nil
 
                   end
                 end

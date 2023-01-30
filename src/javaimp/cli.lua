@@ -16,7 +16,11 @@ local cupdate = parser
   :command("update", "update the index")
 
 cupdate
-  :argument("repository", "directory with jars")
+  :option("-d --tmpdir", "temp dir for jar unpacking")
+  :count("0-1")
+
+cupdate
+  :argument("repo", "directory with jars")
 
 local cfind = parser
   :command("find", "print the index")
@@ -45,12 +49,12 @@ local args = parser:parse()
 
 if args.update then
 
-  assert(update(args.index, args.repository))
+  assert(update(args))
 
 elseif args.find then
 
   assert(err.pwrap(function (check)
-    check(find(args.index, args.type, args))
+    check(find(args))
       :map(check)
       :each(function (match)
         print(compat.unpack({
