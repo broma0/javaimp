@@ -49,7 +49,18 @@ local args = parser:parse()
 
 if args.update then
 
+  collectgarbage("stop")
+  collectgarbage("collect")
+  local sm = collectgarbage("count")
+  local st = os.clock()
+
   assert(update(args))
+
+  local et = os.clock()
+  local em = collectgarbage("count")
+
+  print("time", et - st)
+  print("mem", em - sm)
 
 elseif args.find then
 
