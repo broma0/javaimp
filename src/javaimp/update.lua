@@ -130,8 +130,6 @@ return function (args)
         check(sys.sh("unzip", fp, "-d", tmp))
           :discard()
 
-        local smems = vec()
-
         fs.files(tmp, { recurse = true })
           :map(check)
 
@@ -148,7 +146,7 @@ return function (args)
           :chunk(1000)
 
           :each(function (classes)
-
+            
             local spkg
             local ssym
             local pkg
