@@ -2,3 +2,5 @@ test/javaimp.db
 test/m2
 *.rock
 test/luacov.stats.out
+.old
+.javaimp.db
